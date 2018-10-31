@@ -10,7 +10,7 @@ SendMode Input ; Recommended for new scripts due to its superior
 SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 
 ;///////////////////////////////////////////////////////////////////////////////
-; TLG ROSS v3.4
+; TLG ROSS v3.5
 ;///////////////////////////////////////////////////////////////////////////////
 ; This script translates shorthand TLG information entered by the user into
 ; proper delorean codes. This script, in general, defaults to silent errors
