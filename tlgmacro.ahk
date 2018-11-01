@@ -30,7 +30,7 @@ global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx")
 ; Run Script
 ; Shift + Alt + J
 +!j::
-msgbox % tlg_wrapper()
+msgbox % tlg_wrapper(__all__maintable, "_def", "0", "tr")
 return
 
 ; Reload Script
@@ -83,13 +83,13 @@ str_to_arr(str, delim:="", omit:="") {
 ; Called by:    tlg_wrapper
 ; Returns:      tlgarr: array from string delimited by spaces, excluding commas
 ;               descrip: array containing all information after a comma, if any
-format_inputs(byref tlgarr, byref descrip) {
+format_inputs(byref tlg_arr, byref des_str) {
     userinput := get_input()
     if (userinput == -1 or userinput == "")
-        tlgarr := descrip := -1
+        tlg_arr := descrip := -1
     else {
-        tlgarr := str_to_arr(userinput, " ", ",") ; array
-        descrip := str_to_arr(userinput, ",")[2] ; string
+        tlg_arr := str_to_arr(userinput, " ", ",") ; array
+        des_str := str_to_arr(userinput, ",")[2] ; string
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
@@ -168,7 +168,7 @@ make_key_arr(array, frmt) {
         loop % array.maxindex(1) {
             key := array[1, a_index]
             val := array[2, a_index]
-            keyarray.insert(key: {"index": a_index, "description": val})
+            keyarray.insert(key, {"index": a_index, "description": val})
         }
         return keyarray
     }
@@ -176,12 +176,11 @@ make_key_arr(array, frmt) {
         loop % array.maxindex(2) {
             key := array[a_index, 2]
             val := array[a_index, 1]
-            keyarray.insert(key: {"index": a_index, "description": val})
+            keyarray.insert(key, {"index": a_index, "description": val})
         }
         return keyarray
     }
     else return -1
-    }
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_tlg
@@ -195,47 +194,55 @@ make_key_arr(array, frmt) {
 ; Called by:    format_tlg
 ; Returns:      keyarray: array object containing keys with values of their
 ;                         own original index.
-format_tlg(tlgarr, descrip, xlarr, xldescarr, defcol:=0, lastdefcol:="tr") {
-    projects := make_key_arr(xlarr, 1), headers := make_key_arr(xlarr, 2)
-    defrow:="default", row := projects[defrow], col:= headers[defcol], 
-    bill := "", formatteddesc := ""
-    for index, value in tlgarr {
+format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
+    headers := make_key_arr(safe_arr, 2), projects := make_key_arr(safe_arr, 1)
+    row_num := projects[def_row], col_num := headers[def_col]
+    tlg_desc := des_str
+    
+    for index, value in tlg_arr {
         if headers.haskey(value) {
-            col := headers[value] ; if val in header, set column number
-            formatteddesc .= xldescarr[2, col] . " "
+            col_num := headers[value["index"]]
+            if (!des_str)
+                tlg_desc .= headers[value["description"]]
         }
         else if projects.haskey(value) {
-            row := projects[value]
-            formatteddesc .= xlarr[row, headers["Project"]] . " "
+            row_num := projects[value["index"]]
+            if (!des_str)
+                tlg_desc .= projects[value["description"]]
         }
         else if (value == "nb")
-            bill := 22
+            tlg_bill := 22
         else if (value == "ed")
-            bill := 7
+            tlg_bill := 7
         else return
     }
+    tlg := safe_arr[row_num, col_num]
+    prj := safe_arr[row_num, headers["ID"]]
+    def_col_num := headers[def_col["index"]]
+    def_col_des := headers[def_col["description"]]
 
-    prj := xlarr[row, headers["ID"]], tlg := xlarr[row, col]
-    if (!tlg && col <= headers[lastdefcol])
-        tlg := xlarr[projects[defrow], col]
-    else if (col == headers[defcol] && !instr(formatteddesc
-                                            , xldescarr[2, col]))
-        formatteddesc .= xldescarr[2, col] . " "
+    if (!tlg && col_num  <= headers[last_col])
+        tlg := safe_arr[projects[def_row["index"]], col_num]
+    else if (col_num  == def_col_num && !instr(tlg_desc, def_col_des))
+        tlg_desc .= def_col_des . " "
     else if !tlg
         return
-    return tlg . "/" . prj . "////" . bill . "," . formatteddesc
+    return tlg . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
 
-tlg_wrapper() {
-    format_inputs(tlgarr, descrip)
-    if (tlgarr == -1)
+tlg_wrapper(safe_arr, def_row, def_col, last_col) {
+    format_inputs(tlg_arr, des_str)
+    msgbox % des_str
+    if (tlg_arr == -1)
         return
     else {
-        formattedtlg := format_tlg(tlgarr
-                                 , descrip
-                                 , __all__maintable
-                                 , __all__desctable)
-        return formattedtlg
+        final_tlg := format_tlg(safe_arr
+                              , tlg_arr
+                              , des_str
+                              , def_row
+                              , def_col
+                              , last_col)
+        return final_tlg
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
