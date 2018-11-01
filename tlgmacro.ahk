@@ -22,7 +22,7 @@ SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE GLOBALS
 ;//////////////////////////////////////////////////////////////////////////////
-global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx")
+global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx", "Main")
 
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE HOTKEYS 
@@ -58,7 +58,7 @@ get_input() {
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         str_to_arr
-; Description:  Converts string to array using passed delimier and omits passed
+; Description:  Converts string to array using passed delim and omits passed
 ;               characters.
 ; Parameters:   str: string to create array
 ;               delim: delimiter string (defaults to nothing)
@@ -74,6 +74,28 @@ str_to_arr(str, delim:="", omit:="") {
         return arr := strsplit(str, delim, omit)
     }
 }
+
+arr_to_str(arr) {
+    string := "{"
+    for key, value in arr {
+        if(A_index != 1)
+            string .= ","
+        if key is number
+            string .= key ":"
+        else if(isobject(key))
+            string .= arr_to_str(key) ":"
+        else {
+            string .= key . ":"
+        }
+        if value is number
+            string .= value
+        else if (isobject(value))
+            string .= arr_to_str(value)
+        else
+            string .= value
+    }
+    return string . "}"
+}
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_inputs
 ; Description:  Calls get_input and returns two arrays. Array 1 contains TLG
@@ -84,12 +106,18 @@ str_to_arr(str, delim:="", omit:="") {
 ; Returns:      tlgarr: array from string delimited by spaces, excluding commas
 ;               descrip: array containing all information after a comma, if any
 format_inputs(byref tlg_arr, byref des_str) {
-    userinput := get_input()
-    if (userinput == -1 or userinput == "")
-        tlg_arr := descrip := -1
+    user_inp := get_input()
+    if (user_inp == -1 or user_inp == "")
+        tlg_arr := des_str := -1
     else {
-        tlg_arr := str_to_arr(userinput, " ", ",") ; array
-        des_str := str_to_arr(userinput, ",")[2] ; string
+        has_comma := instr(user_inp, ",")
+        if (!has_comma)
+            comma_pos := strlen(user_inp)
+        else comma_pos := has_comma
+        tlg := substr(user_inp, 1, comma_pos)
+        des := substr(user_inp, comma_pos + 1)
+        tlg_arr := str_to_arr(tlg, " ", ",")
+        des_str := trim(des)
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
@@ -150,8 +178,9 @@ make_safe_arr(file_path, sheet:=1) {
     lastrow := oWorkbook.Sheets(sheet).Range("A:A").SpecialCells(11).Row
     lastcol := oWorkbook.Sheets(sheet).Range("1:1").SpecialCells(11).Column
     ; too lazy to look up how to convert back to alpha in VBA
-    rng := "A1:" . excel_encode(lastcol) . lastrow
-    return oWorkbook.Sheets(sheet).Range(rng).Value
+    ;rng := "A1:" . excel_encode(lastcol) . lastrow
+    ;return oWorkbook.Sheets(sheet).Range(rng).Value
+    return oWorkbook.Sheets("Main").Range("A1:O11").Value
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         make_key_arr
@@ -160,27 +189,30 @@ make_safe_arr(file_path, sheet:=1) {
 ;               frmt:  col = assign values from column
 ;                      row = assign values from row
 ; Called by:    format_tlg
-; Returns:      keyarray: array object containing keys with values of their
+; Returns:      key_array: array object containing keys with values of their
 ;                         own original index
 make_key_arr(array, frmt) {
-    keyarray := {}
+    key_array := {}
     if (frmt == "row") {
-        loop % array.maxindex(1) {
+        loop % array.maxindex(2) {
             key := array[1, a_index]
             val := array[2, a_index]
-            keyarray.insert(key, {"index": a_index, "description": val})
+            arr_val := {"index": a_index, "description": val}
+            key_array.insert(key, {"index": a_index, "description": val})
         }
-        return keyarray
+        return key_array
     }
     else if (frmt == "col") {
-        loop % array.maxindex(2) {
+        loop % array.maxindex(1) {
             key := array[a_index, 2]
             val := array[a_index, 1]
-            keyarray.insert(key, {"index": a_index, "description": val})
+            key_array.insert(key, {"index": a_index, "description": val})
         }
-        return keyarray
+        return key_array
     }
-    else return -1
+    else
+        msgbox, "Format must be row or col"
+        return
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_tlg
@@ -192,49 +224,55 @@ make_key_arr(array, frmt) {
 ;               xlarr:
 ;               xldescarr:
 ; Called by:    format_tlg
-; Returns:      keyarray: array object containing keys with values of their
+; Returns:      key_array: array object containing keys with values of their
 ;                         own original index.
 format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
-    headers := make_key_arr(safe_arr, 2), projects := make_key_arr(safe_arr, 1)
-    row_num := projects[def_row], col_num := headers[def_col]
-    tlg_desc := des_str
-    
-    for index, value in tlg_arr {
-        if headers.haskey(value) {
-            col_num := headers[value["index"]]
+    func := "format_tlg"
+    headers := make_key_arr(safe_arr, "row")
+    projects := make_key_arr(safe_arr, "col")
+    row_num := projects[def_row]["index"], col_num := headers[def_col]["index"]
+    tlg_desc := des_str, tlg_bill := "", def_chk := 1
+    for key, value in tlg_arr {
+        if % headers.haskey(value) {
+            def_chk := 0
+            col_num := headers[value]["index"]
             if (!des_str)
-                tlg_desc .= headers[value["description"]]
+                tlg_desc .= headers[value]["description"] . " "
         }
-        else if projects.haskey(value) {
-            row_num := projects[value["index"]]
+        else if % projects.haskey(value) {
+            row_num := projects[value]["index"]
             if (!des_str)
-                tlg_desc .= projects[value["description"]]
+                tlg_desc .= projects[value]["description"] . " "
         }
-        else if (value == "nb")
+        else if (value == "nb") {
             tlg_bill := 22
-        else if (value == "ed")
+        }
+        else if (value == "ed") {
             tlg_bill := 7
-        else return
+        }
+         else return
     }
-    tlg := safe_arr[row_num, col_num]
-    prj := safe_arr[row_num, headers["ID"]]
-    def_col_num := headers[def_col["index"]]
-    def_col_des := headers[def_col["description"]]
+    tlp := safe_arr[row_num, col_num]
+    prj := safe_arr[row_num, headers["ID"]["index"]]
+    headers[def_col]["index"]
+    headers[def_col]["description"]
+    
+    if (!tlp && col_num  <= headers[last_col]["index"])
+        tlp := safe_arr[projects[def_row]["index"], col_num]   
+    
+    if (!des_str && tlg_bill == 22)
+        tlg_desc .= "non-bill"
+    else if (tlg_bill == 7)
+        tlg_desc .= "research"
 
-    if (!tlg && col_num  <= headers[last_col])
-        tlg := safe_arr[projects[def_row["index"]], col_num]
-    else if (col_num  == def_col_num && !instr(tlg_desc, def_col_des))
-        tlg_desc .= def_col_des . " "
-    else if !tlg
-        return
-    return tlg . "/" . prj . "////" . tlg_bill . "," . tlg_desc
+    return tlp . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
 
 tlg_wrapper(safe_arr, def_row, def_col, last_col) {
+    func := "tlg_wrapper"
     format_inputs(tlg_arr, des_str)
-    msgbox % des_str
     if (tlg_arr == -1)
-        return
+        return "no array"
     else {
         final_tlg := format_tlg(safe_arr
                               , tlg_arr
