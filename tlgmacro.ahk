@@ -1,6 +1,6 @@
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; SCRIPT SETTINGS
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 #SingleInstance force
 #NoEnv ; Recommended for performance and compatibility with future 
        ; AutoHotkey releases.
@@ -9,36 +9,28 @@ SendMode Input ; Recommended for new scripts due to its superior
                ; speed and reliability.
 SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; TLG ROSS v3.4
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; This script translates shorthand TLG information entered by the user into
 ; proper delorean codes. This script, in general, defaults to silent errors
 ; and returns nothing due to usability concerns when keying information in 
 ; quick succession.
-; 
-; For now, shorthand customization and project entries must be entered into the
-; script itself. Future enhancements look to importing that information from a
-; a spreadsheet for ease-of-maintenance.
-; 
-; This script also defaults to sending the translated inputs directly after
-; the user enters the TLG information, but can be turned off.
 ;
 ; Update: 2018 October 30
 
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE GLOBALS
-;///////////////////////////////////////////////////////////////////////////////
-global __all__maintable := make_table("Main")
-global __all__desctable := make_table("TLG Descriptions")
+;//////////////////////////////////////////////////////////////////////////////
+global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx")
 
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE HOTKEYS 
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; Run Script
 ; Shift + Alt + J
 +!j::
-msgbox % tlg_wrapper()
+msgbox % tlg_wrapper(__all__maintable, "_def", "0", "tr")
 return
 
 ; Reload Script
@@ -47,9 +39,9 @@ return
 reload
 return
 
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE FUNCTIONS
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; Name:         get_input
 ; Description:  Prompts and returns a user's input.
 ; Parameters:   None
@@ -64,7 +56,7 @@ get_input() {
     }
     else return str ; otherwise return the string input
 }
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; Name:         str_to_arr
 ; Description:  Converts string to array using passed delimier and omits passed
 ;               characters.
@@ -82,7 +74,7 @@ str_to_arr(str, delim:="", omit:="") {
         return arr := strsplit(str, delim, omit)
     }
 }
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_inputs
 ; Description:  Calls get_input and returns two arrays. Array 1 contains TLG
 ;               information before the comma, Array 2 contains the description
@@ -91,24 +83,24 @@ str_to_arr(str, delim:="", omit:="") {
 ; Called by:    tlg_wrapper
 ; Returns:      tlgarr: array from string delimited by spaces, excluding commas
 ;               descrip: array containing all information after a comma, if any
-format_inputs(byref tlgarr, byref descrip) {
+format_inputs(byref tlg_arr, byref des_str) {
     userinput := get_input()
     if (userinput == -1 or userinput == "")
-        tlgarr := descrip := -1
+        tlg_arr := descrip := -1
     else {
-        tlgarr := str_to_arr(userinput, " ", ",") ; array
-        descrip := str_to_arr(userinput, ",")[2] ; string
+        tlg_arr := str_to_arr(userinput, " ", ",") ; array
+        des_str := str_to_arr(userinput, ",")[2] ; string
     }
 }
-;///////////////////////////////////////////////////////////////////////////////
-; Name:         num_to_alpha
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         encode_num
 ; Description:  Takes an integer and returns its alphabetic equivalent. Errors
 ;               passed value is not an integer or not within 1-26.
 ; Parameters:   int: integer to convert to alpha character
-; Called by:    get_excel_col
+; Called by:    excel_encode
 ; Returns:      alphabetic character (good input)
 ;               error message (bad input)
-num_to_alpha(int) {
+encode_num(int) {
     alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     if int is not integer
         return "Non-integer input"
@@ -116,8 +108,8 @@ num_to_alpha(int) {
         return "Integer out of alphabetic bounds"
     else return substr(alphabet, int, 1)
 }
-;///////////////////////////////////////////////////////////////////////////////
-; Name:         get_excel_col
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         excel_encode
 ; Description:  I cannot for the life of me figure out how VBA works, so I had
 ;               to write a function that converts the numeric column returned
 ;               from a SpecialCell lookup into familiar alphabetic excel
@@ -125,64 +117,72 @@ num_to_alpha(int) {
 ;               This is a recursive function.
 ; Parameters:   column_num: Excel numeric column ID
 ;               divisor: modulo divisor (should always be 26 but whatever)
-; Called by:    get_excel_col (recursively)
-;               make_table
+; Called by:    excel_encode (recursively)
+;               make_safe_arr
 ; Returns:      alphabetic translation of col ID (good input)
 ;               error message (bad input)
-get_excel_col(column_num) {
+excel_encode(column_num) {
     errormsg := "Parameters must be positive integers"
     if column_num is not integer
         return % errormsg
     else if (column_num <= 0)
         return % errormsg
     else if (column_num <= 26)
-        return % num_to_alpha(column_num)
+        return % encode_num(column_num)
     else {
         remainder := mod(column_num, 26)
         column_num := floor(column_num/26)
-        return % get_excel_col(column_num) . num_to_alpha(remainder)
+        return % excel_encode(column_num) . encode_num(remainder)
     }
 }
-;///////////////////////////////////////////////////////////////////////////////
-; Name:         make_table
-; Description:  Gets an excel workbook from passed file path, and returns an
-;               array object for passed sheet.
-; Parameters:   sheet: sheet name
-;               file_path: file path of excel workbook, defaults to Ross'
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         make_safe_arr
+; Description:  Gets an excel workbook from passed file path and returns a safe
+;               array object.
+; Parameters:   sheet: sheet name, defaults to 1
+;               file_path: path to excel matrix
 ; Called by:    __all__maintable (global)
 ;               __all__desctable (global)
 ; Returns:      array object
-make_table(sheet, file_path := "C:\Users\Ross\Desktop\matrix.xlsx") {
+make_safe_arr(file_path, sheet:=1) {
     oWorkbook := comobjget(file_path)
     ; VBA crap probably
     lastrow := oWorkbook.Sheets(sheet).Range("A:A").SpecialCells(11).Row
     lastcol := oWorkbook.Sheets(sheet).Range("1:1").SpecialCells(11).Column
     ; too lazy to look up how to convert back to alpha in VBA
-    rng := "A1:" . get_excel_col(lastcol) . lastrow
+    rng := "A1:" . excel_encode(lastcol) . lastrow
     return oWorkbook.Sheets(sheet).Range(rng).Value
 }
-;///////////////////////////////////////////////////////////////////////////////
-; Name:         make_keys
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         make_key_arr
 ; Description:  Create a key array based on the passed format.
-; Parameters:   frmt: header   == 1
-;                     projects == 2
-;               array: array from which to extract keys for key array
+; Parameters:   array: array from which to extract keys for key array
+;               frmt:  col = assign values from column
+;                      row = assign values from row
 ; Called by:    format_tlg
 ; Returns:      keyarray: array object containing keys with values of their
-;                         own original index.
-make_keys(frmt, array) {
+;                         own original index
+make_key_arr(array, frmt) {
     keyarray := {}
-    loop % array.MaxIndex(frmt) {
-        if (frmt == 1) ; projects
-            key := array[A_Index, 2]
-        else if (frmt == 2) ; headers
-            key := array[1, A_Index]
-        else msgbox,, TLG Ross - Error, %frmt% is not a valid frmt option
-        keyarray.Insert(key, A_Index)
+    if (frmt == "row") {
+        loop % array.maxindex(1) {
+            key := array[1, a_index]
+            val := array[2, a_index]
+            keyarray.insert(key, {"index": a_index, "description": val})
+        }
+        return keyarray
     }
-    return keyarray
+    else if (frmt == "col") {
+        loop % array.maxindex(2) {
+            key := array[a_index, 2]
+            val := array[a_index, 1]
+            keyarray.insert(key, {"index": a_index, "description": val})
+        }
+        return keyarray
+    }
+    else return -1
 }
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_tlg
 ; Description:  This function translates the tlg and description arrays into
 ;               usable TLG formats. Returns final TLG string to be sent to
@@ -194,48 +194,57 @@ make_keys(frmt, array) {
 ; Called by:    format_tlg
 ; Returns:      keyarray: array object containing keys with values of their
 ;                         own original index.
-format_tlg(tlgarr, descrip, xlarr, xldescarr, defcol:=0, lastdefcol:="tr") {
-    projects := make_keys(1, xlarr), headers := make_keys(2, xlarr)
-    defrow:="default", row := projects[defrow], col:= headers[defcol], 
-    bill := "", formatteddesc := ""
-    for index, value in tlgarr {
+format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
+    headers := make_key_arr(safe_arr, 2), projects := make_key_arr(safe_arr, 1)
+    row_num := projects[def_row], col_num := headers[def_col]
+    tlg_desc := des_str
+    
+    for index, value in tlg_arr {
         if headers.haskey(value) {
-            col := headers[value] ; if val in header, set column number
-            formatteddesc .= xldescarr[2, col] . " "
+            col_num := headers[value["index"]]
+            if (!des_str)
+                tlg_desc .= headers[value["description"]]
         }
         else if projects.haskey(value) {
-            row := projects[value]
-            formatteddesc .= xlarr[row, headers["Project"]] . " "
+            row_num := projects[value["index"]]
+            if (!des_str)
+                tlg_desc .= projects[value["description"]]
         }
         else if (value == "nb")
-            bill := 22
+            tlg_bill := 22
         else if (value == "ed")
-            bill := 7
+            tlg_bill := 7
         else return
     }
+    tlg := safe_arr[row_num, col_num]
+    prj := safe_arr[row_num, headers["ID"]]
+    def_col_num := headers[def_col["index"]]
+    def_col_des := headers[def_col["description"]]
 
-    prj := xlarr[row, headers["ID"]], tlg := xlarr[row, col]
-    if (!tlg && col <= headers[lastdefcol])
-        tlg := xlarr[projects[defrow], col]
-    else if (col == headers[defcol] && !instr(formatteddesc, xldescarr[2, col]))
-        formatteddesc .= xldescarr[2, col] . " "
+    if (!tlg && col_num  <= headers[last_col])
+        tlg := safe_arr[projects[def_row["index"]], col_num]
+    else if (col_num  == def_col_num && !instr(tlg_desc, def_col_des))
+        tlg_desc .= def_col_des . " "
     else if !tlg
         return
-    return tlg . "/" . prj . "////" . bill . "," . formatteddesc
+    return tlg . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
 
-tlg_wrapper() {
-    format_inputs(tlgarr, descrip)
-    if (tlgarr == -1)
+tlg_wrapper(safe_arr, def_row, def_col, last_col) {
+    format_inputs(tlg_arr, des_str)
+    msgbox % des_str
+    if (tlg_arr == -1)
         return
     else {
-        formattedtlg := format_tlg(tlgarr
-                                 , descrip
-                                 , __all__maintable
-                                 , __all__desctable)
-        return formattedtlg
+        final_tlg := format_tlg(safe_arr
+                              , tlg_arr
+                              , des_str
+                              , def_row
+                              , def_col
+                              , last_col)
+        return final_tlg
     }
 }
-;///////////////////////////////////////////////////////////////////////////////
-; Copyright © 2018 Ross F. Calimlim - LIC: GNU GPLv2
-;///////////////////////////////////////////////////////////////////////////////
+;//////////////////////////////////////////////////////////////////////////////
+; Copyright © 2018 Ross F. Calimlim - LIC: GNU GPLv3
+;//////////////////////////////////////////////////////////////////////////////
