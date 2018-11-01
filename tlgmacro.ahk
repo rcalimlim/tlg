@@ -22,8 +22,7 @@ SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE GLOBALS
 ;//////////////////////////////////////////////////////////////////////////////
-global __all__maintable := make_table("Main")
-global __all__desctable := make_table("TLG Descriptions")
+global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx")
 
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE HOTKEYS 
@@ -31,7 +30,7 @@ global __all__desctable := make_table("TLG Descriptions")
 ; Run Script
 ; Shift + Alt + J
 +!j::
-send % tlg_wrapper()
+msgbox % tlg_wrapper()
 return
 
 ; Reload Script
@@ -98,7 +97,7 @@ format_inputs(byref tlgarr, byref descrip) {
 ; Description:  Takes an integer and returns its alphabetic equivalent. Errors
 ;               passed value is not an integer or not within 1-26.
 ; Parameters:   int: integer to convert to alpha character
-; Called by:    excel_col
+; Called by:    excel_encode
 ; Returns:      alphabetic character (good input)
 ;               error message (bad input)
 encode_num(int) {
@@ -110,7 +109,7 @@ encode_num(int) {
     else return substr(alphabet, int, 1)
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         excel_col
+; Name:         excel_encode
 ; Description:  I cannot for the life of me figure out how VBA works, so I had
 ;               to write a function that converts the numeric column returned
 ;               from a SpecialCell lookup into familiar alphabetic excel
@@ -118,11 +117,11 @@ encode_num(int) {
 ;               This is a recursive function.
 ; Parameters:   column_num: Excel numeric column ID
 ;               divisor: modulo divisor (should always be 26 but whatever)
-; Called by:    excel_col (recursively)
-;               make_table
+; Called by:    excel_encode (recursively)
+;               make_safe_arr
 ; Returns:      alphabetic translation of col ID (good input)
 ;               error message (bad input)
-excel_col(column_num) {
+excel_encode(column_num) {
     errormsg := "Parameters must be positive integers"
     if column_num is not integer
         return % errormsg
@@ -133,47 +132,56 @@ excel_col(column_num) {
     else {
         remainder := mod(column_num, 26)
         column_num := floor(column_num/26)
-        return % excel_col(column_num) . encode_num(remainder)
+        return % excel_encode(column_num) . encode_num(remainder)
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         make_table
-; Description:  Gets an excel workbook from passed file path, and returns an
-;               array object for passed sheet.
-; Parameters:   sheet: sheet name
-;               file_path: file path of excel workbook, defaults to Ross'
+; Name:         make_safe_arr
+; Description:  Gets an excel workbook from passed file path and returns a safe
+;               array object.
+; Parameters:   sheet: sheet name, defaults to 1
+;               file_path: path to excel matrix
 ; Called by:    __all__maintable (global)
 ;               __all__desctable (global)
 ; Returns:      array object
-make_table(sheet, file_path := "C:\Users\Ross\Desktop\matrix.xlsx") {
+make_safe_arr(file_path, sheet:=1) {
     oWorkbook := comobjget(file_path)
     ; VBA crap probably
     lastrow := oWorkbook.Sheets(sheet).Range("A:A").SpecialCells(11).Row
     lastcol := oWorkbook.Sheets(sheet).Range("1:1").SpecialCells(11).Column
     ; too lazy to look up how to convert back to alpha in VBA
-    rng := "A1:" . excel_col(lastcol) . lastrow
+    rng := "A1:" . excel_encode(lastcol) . lastrow
     return oWorkbook.Sheets(sheet).Range(rng).Value
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         make_keys
+; Name:         make_key_arr
 ; Description:  Create a key array based on the passed format.
-; Parameters:   frmt: header   == 1
-;                     projects == 2
-;               array: array from which to extract keys for key array
+; Parameters:   array: array from which to extract keys for key array
+;               frmt:  col = assign values from column
+;                      row = assign values from row
 ; Called by:    format_tlg
 ; Returns:      keyarray: array object containing keys with values of their
-;                         own original index.
-make_keys(frmt, array) {
+;                         own original index
+make_key_arr(array, frmt) {
     keyarray := {}
-    loop % array.MaxIndex(frmt) {
-        if (frmt == 1) ; projects
-            key := array[A_Index, 2]
-        else if (frmt == 2) ; headers
-            key := array[1, A_Index]
-        else msgbox,, TLG Ross - Error, %frmt% is not a valid frmt option
-        keyarray.Insert(key, A_Index)
+    if (frmt == "row") {
+        loop % array.maxindex(1) {
+            key := array[1, a_index]
+            val := array[2, a_index]
+            keyarray.insert(key: {"index": a_index, "description": val})
+        }
+        return keyarray
     }
-    return keyarray
+    else if (frmt == "col") {
+        loop % array.maxindex(2) {
+            key := array[a_index, 2]
+            val := array[a_index, 1]
+            keyarray.insert(key: {"index": a_index, "description": val})
+        }
+        return keyarray
+    }
+    else return -1
+    }
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_tlg
@@ -188,7 +196,7 @@ make_keys(frmt, array) {
 ; Returns:      keyarray: array object containing keys with values of their
 ;                         own original index.
 format_tlg(tlgarr, descrip, xlarr, xldescarr, defcol:=0, lastdefcol:="tr") {
-    projects := make_keys(1, xlarr), headers := make_keys(2, xlarr)
+    projects := make_key_arr(xlarr, 1), headers := make_key_arr(xlarr, 2)
     defrow:="default", row := projects[defrow], col:= headers[defcol], 
     bill := "", formatteddesc := ""
     for index, value in tlgarr {
