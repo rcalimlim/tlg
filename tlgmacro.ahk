@@ -273,7 +273,16 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_def_col) {
     }
     return % tlp . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
-
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         tlg_wrapper
+; Description:  Wraps all the tlg functions together.
+; Parameters:   safe_arr:     array from excel file
+;               def_row:      default row mnemonic
+;               def_col:      default column abbreviation
+;               last_def_col: last column abbreviation to be considered for
+;                             for default assignment functionality
+; Called by:    this script
+; Returns:      final_tlg:    formatted tlg string
 tlg_wrapper(safe_arr, def_row, def_col, last_def_col) {
     func := "tlg_wrapper"
     format_inputs(tlg_arr, des_str)
