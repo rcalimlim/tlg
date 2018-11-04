@@ -12,16 +12,17 @@ SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 ;//////////////////////////////////////////////////////////////////////////////
 ; TLG ROSS v3.4
 ;//////////////////////////////////////////////////////////////////////////////
-; This script translates shorthand TLG information entered by the user into
-; proper delorean codes. This script, in general, defaults to silent errors
-; and returns nothing due to usability concerns when keying information in 
-; quick succession.
+; This script translates shorthand TLG information entered by a user into
+; properly formatted time logging strings. This script, in general, defaults
+; to silent errors and returns nothing due to usability concerns when keying
+; information in quick succession.
 ;
-; Update: 2018 October 30
+; Update: 2018 November 3
 
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE GLOBALS
 ;//////////////////////////////////////////////////////////////////////////////
+; make a safe array from passed excel matrix and sheet name
 global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx", "Main")
 
 ;//////////////////////////////////////////////////////////////////////////////
@@ -45,10 +46,10 @@ return
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         get_input
 ; Description:  Prompts and returns a user's input.
-; Parameters:   None
+; Parameters:   none
 ; Called by:    format_inputs
-; Returns:      string (if not cancelled)
-;               -1 (if cancelled)
+; Returns:      string (if user enters information)
+;               -1 (otherwise)
 get_input() {
     msg = org + tlp + bill, desc
     inputbox, str, TLG Ross, %msg%,, 150, 130 ; inputbox size 200x150
@@ -59,14 +60,15 @@ get_input() {
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         str_to_arr
-; Description:  Converts string to array using passed delim and omits passed
-;               characters.
-; Parameters:   str: string to create array
-;               delim: delimiter string (defaults to nothing)
-;               omit: characters to exclude from strings (defaults to nothing)
+; Description:  Converts string to array using passed delimeter. Also omits
+;               passed characters.
+; Parameters:   str:   string to create array from
+;               delim: delimiter string (defaults to nothing so every char is
+;                      parsed)
+;               omit:  characters to exclude from strings (defaults to nothing)
 ; Called by:    format_inputs
-; Returns:      arr: array created from string
-;               -1 (bad input)
+; Returns:      arr: if string exists
+;               -1: if string is empty or an error (-1)
 str_to_arr(str, delim:="", omit:="") {
     if (!str || str == -1) {
         return -1
@@ -75,6 +77,13 @@ str_to_arr(str, delim:="", omit:="") {
         return arr := strsplit(str, delim, omit)
     }
 }
+;//////////////////////////////////////////////////////////////////////////////
+; Name:         arr_to_str
+; Description:  Flattens array into human readable string. Good for testing,
+;               not actually called for tlg process.
+; Parameters:   arr: array to convert to string
+; Called by:    format_inputs
+; Returns:      string
 arr_to_str(arr) {
     string := "{"
     for key, value in arr {
@@ -123,10 +132,10 @@ format_inputs(byref tlg_arr, byref des_str) {
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         encode_num
 ; Description:  Takes an integer and returns its alphabetic equivalent. Errors
-;               passed value is not an integer or not within 1-26.
+;               if parameter is a non-integer or outside of range 1-26.
 ; Parameters:   int: integer to convert to alpha character
 ; Called by:    excel_encode
-; Returns:      alphabetic character (good input)
+; Returns:      single alphabetic character (good input)
 ;               error message (bad input)
 encode_num(int) {
     alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -141,10 +150,9 @@ encode_num(int) {
 ; Description:  I cannot for the life of me figure out how VBA works, so I had
 ;               to write a function that converts the numeric column returned
 ;               from a SpecialCell lookup into familiar alphabetic excel
-;               notation. 
-;               This is a recursive function.
+;               notation. This is a recursive function.
 ; Parameters:   column_num: Excel numeric column ID
-;               divisor: modulo divisor (should always be 26 but whatever)
+;               divisor:    modulo divisor (should always be 26 but whatever)
 ; Called by:    excel_encode (recursively)
 ;               make_safe_arr
 ; Returns:      alphabetic translation of col ID (good input)
@@ -167,7 +175,7 @@ excel_encode(column_num) {
 ; Name:         make_safe_arr
 ; Description:  Gets an excel workbook from passed file path and returns a safe
 ;               array object.
-; Parameters:   sheet: sheet name, defaults to 1
+; Parameters:   sheet:     sheet name, defaults to 1
 ;               file_path: path to excel matrix
 ; Called by:    __all__maintable (global)
 ; Returns:      array object
@@ -215,7 +223,7 @@ make_key_arr(array, frmt) {
 ; Description:  This function translates the tlg and description arrays into
 ;               usable TLG formats. Returns final TLG string to be sent to
 ;               calendar.
-; Parameters:   tlgarr: formatted array
+; Parameters:   tlgarr:     formatted array
 ;               descrip:
 ;               xlarr:
 ;               xldescarr:
@@ -262,7 +270,6 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_def_col) {
     else {
         tlp := safe_arr[row_num, col_num]
     }
-    
     return % tlp . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
 
