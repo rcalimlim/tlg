@@ -10,21 +10,28 @@ SendMode Input ; Recommended for new scripts due to its superior
 SetWorkingDir %A_ScriptDir% ; Ensures a consistent starting directory.
 
 ;//////////////////////////////////////////////////////////////////////////////
-; TLG ROSS v3.4
+; TLG ROSS v4
 ;//////////////////////////////////////////////////////////////////////////////
 ; This script translates shorthand TLG information entered by a user into
 ; properly formatted time logging strings. This script, in general, defaults
 ; to silent errors and returns nothing due to usability concerns when keying
 ; information in quick succession.
 ;
-; Update: 2018 November 3
+; Update: 2018 November 7
 
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE GLOBALS
 ;//////////////////////////////////////////////////////////////////////////////
 
+; determine file path of excel tlg matrix based on current username
+if (A_UserName == "rcalimli") { 
+    path := "C:\AutoHotkey\matrix.xlsx"
+}
+else {
+    path := "D:\Documents\matrix.xlsx"
+}
 ; make a safe array from passed excel matrix and sheet name
-global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx", "Main")
+__all__maintable := make_table(path, "Main")
 
 ;//////////////////////////////////////////////////////////////////////////////
 ; DEFINE HOTKEYS 
@@ -33,7 +40,7 @@ global __all__maintable := make_safe_arr("D:\Documents\matrix.xlsx", "Main")
 ; Run Script
 ; Shift + Alt + J
 +!j::
-msgbox % tlg_wrapper()
+msgbox % tlg_wrapper(__all__maintable, "_def", "0", "tr")
 return
 
 ; Reload Script
@@ -52,7 +59,7 @@ return
 ; Returns:      string (if user enters information)
 ;               -1 (otherwise)
 get_input() {
-    msg = org + tlp + bill, desc
+    msg := "org + tlp + bill, desc"
     inputbox, str, TLG Ross, %msg%,, 150, 130 ; inputbox size 200x150
     if (errorlevel != 0 || str == "") { ; return -1 if anything but user entry
         return -1
@@ -113,8 +120,10 @@ arr_to_str(arr) {
 ;               override if any.
 ; Parameters:   byref variables passed out by name when called
 ; Called by:    tlg_wrapper
-; Returns:      tlgarr: array from string delimited by spaces, excluding commas
-;               descrip: array containing all information after a comma, if any
+; Returns:      tlgarr:  array from string delimited by spaces,
+;                        excluding commas
+;               descrip: array containing all information after a comma,
+;                        if any
 format_inputs(byref tlg_arr, byref des_str) {
     user_inp := get_input()
     if (user_inp == -1 or user_inp == "")
@@ -131,14 +140,14 @@ format_inputs(byref tlg_arr, byref des_str) {
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         num_to_alpha
+; Name:         encode_num
 ; Description:  Takes an integer and returns its alphabetic equivalent. Errors
 ;               if parameter is a non-integer or outside of range 1-26.
 ; Parameters:   int: integer to convert to alpha character
 ; Called by:    excel_encode
 ; Returns:      single alphabetic character (good input)
 ;               error message (bad input)
-num_to_alpha(int) {
+encode_num(int) {
     alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     if int is not integer
         return "Non-integer input"
@@ -147,7 +156,7 @@ num_to_alpha(int) {
     else return substr(alphabet, int, 1)
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         get_excel_col
+; Name:         excel_encode
 ; Description:  I cannot for the life of me figure out how VBA works, so I had
 ;               to write a function that converts the numeric column returned
 ;               from a SpecialCell lookup into familiar alphabetic excel
@@ -155,17 +164,17 @@ num_to_alpha(int) {
 ; Parameters:   column_num: Excel numeric column ID
 ;               divisor:    modulo divisor (should always be 26 but whatever)
 ; Called by:    excel_encode (recursively)
-;               make_safe_arr
+;               make_table
 ; Returns:      alphabetic translation of col ID (good input)
 ;               error message (bad input)
-get_excel_col(column_num) {
+excel_encode(column_num) {
     errormsg := "Parameters must be positive integers"
     if column_num is not integer
         return % errormsg
     else if (column_num <= 0)
         return % errormsg
     else if (column_num <= 26)
-        return % num_to_alpha(column_num)
+        return % encode_num(column_num)
     else {
         remainder := mod(column_num, 26)
         , column_num := floor(column_num/26)
@@ -173,19 +182,19 @@ get_excel_col(column_num) {
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         make_safe_arr
+; Name:         make_table
 ; Description:  Gets an excel workbook from passed file path and returns a safe
 ;               array object.
 ; Parameters:   sheet:     sheet name, defaults to 1
 ;               file_path: path to excel matrix
 ; Called by:    __all__maintable (global)
 ; Returns:      array object
-make_table(sheet, file_path := "C:\Users\Ross\Desktop\matrix.xlsx") {
+make_table(file_path, sheet) {
     oWorkbook := comobjget(file_path)
     , lastrow := oWorkbook.Sheets(sheet).Range("A:A").SpecialCells(11).Row
     , lastcol := oWorkbook.Sheets(sheet).Range("1:1").SpecialCells(11).Column
     ; too lazy to look up how to convert back to alpha in VBA
-    rng := "A1:" . get_excel_col(lastcol) . lastrow
+    rng := "A1:" . excel_encode(lastcol) . lastrow
     return oWorkbook.Sheets(sheet).Range(rng).Value
     ; return oWorkbook.Sheets("Main").Range("A1:O11").Value
 }
@@ -198,7 +207,7 @@ make_table(sheet, file_path := "C:\Users\Ross\Desktop\matrix.xlsx") {
 ; Called by:    format_tlg
 ; Returns:      key_array: array object containing keys with values of their
 ;                         own original index
-make_key_arr(array, frmt) {
+make_keys(array, frmt) {
     key_array := {}
     if (frmt == "row") {
         loop % array.maxindex(2) {
@@ -224,25 +233,25 @@ make_key_arr(array, frmt) {
 ; Description:  This function translates the tlg and description arrays into
 ;               usable TLG formats. Returns final TLG string to be sent to
 ;               calendar.
-; Parameters:   tlgarr:     formatted array
-;               descrip:
-;               xlarr:
-;               xldescarr:
+; Parameters:   safe_arr:   safe array from excel table
+;               tlg_arr:    formatted user input array
+;               des_arr:    formatted user input string
+;               def_row:    default row mnemonic      
+;               def_col:    default col mnemonic
+;               last_col:   last default col
 ; Called by:    format_tlg
 ; Returns:      key_array: array object containing keys with values of their
 ;                         own original index.
-format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_def_col) {
-    func := "format_tlg"
-    
-    ; Initial iterative formatting--bulk of the final output
-    proj_arr := make_key_arr(safe_arr, "col")
-    , head_arr := make_key_arr(safe_arr, "row")
+format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
+    ; define vars
+    proj_arr := make_keys(safe_arr, "col")
+    , head_arr := make_keys(safe_arr, "row")
     , row_num := proj_arr[def_row]["index"]
     , col_num := head_arr[def_col]["index"]
     , tlg_desc := des_str, tlg_bill := "", tlg_bill_des := ""
     , bill_arr := {"nb": {"index": 22, "description": "non-bill"}
                  , "ed": {"index": 7, "description": "education"}}
-    
+    ; initial iterative formatting--bulk of the final output
     for key, value in tlg_arr {
         if % head_arr.haskey(value) {
             col_num := head_arr[value]["index"]
@@ -260,10 +269,9 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_def_col) {
         }
         else return
     }
-    
-    ; Define final tlg values (minor formatting tweaks and edge cases)
+    ; final formatting and edge cases
     def_row_num := proj_arr[def_row]["index"]
-    , def_col_num := head_arr[last_def_col]["index"]
+    , def_col_num := head_arr[last_col]["index"]
     , prj := safe_arr[row_num, head_arr["ID"]["index"]]
     if (col_num  <= def_col_num) { ; assign def tlp ID if col within def range
         tlp := safe_arr[def_row_num, col_num]
@@ -276,15 +284,14 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_def_col) {
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         tlg_wrapper
 ; Description:  Wraps all the tlg functions together.
-; Parameters:   safe_arr:     array from excel file
-;               def_row:      default row mnemonic
-;               def_col:      default column abbreviation
-;               last_def_col: last column abbreviation to be considered for
-;                             for default assignment functionality
-; Called by:    this script
+; Parameters:   safe_arr:   array from excel file
+;               def_row:    default row mnemonic
+;               def_col:    default column abbreviation
+;               last_col:   last column abbreviation to be considered for
+;                           default assignment functionality
+; Called by:    script
 ; Returns:      final_tlg:    formatted tlg string
-tlg_wrapper(safe_arr, def_row, def_col, last_def_col) {
-    func := "tlg_wrapper"
+tlg_wrapper(safe_arr, def_row, def_col, last_col) {
     format_inputs(tlg_arr, des_str)
     if (tlg_arr == -1)
         return
@@ -294,9 +301,9 @@ tlg_wrapper(safe_arr, def_row, def_col, last_def_col) {
                               , des_str
                               , def_row
                               , def_col
-                              , last_def_col)
+                              , last_col)
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Copyright © 2018 Ross F. Calimlim - LIC: GNU GPLv2
+; Copyright © 2018 Ross F. Calimlim - LIC: GNU GPLv3
 ;//////////////////////////////////////////////////////////////////////////////
