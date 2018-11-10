@@ -125,19 +125,20 @@ arr_to_str(arr) {
 ;               descrip: array containing all information after a comma,
 ;                        if any
 format_inputs(byref tlg_arr, byref des_str) {
-    user_inp := get_input()
-    if (user_inp == -1 or user_inp == "")
+    user_inp := get_input(), has_comma := instr(user_inp, ",")
+    if (user_inp == -1 or user_inp == "") {
         tlg_arr := des_str := -1
-    else {
-        has_comma := instr(user_inp, ",")
-        if (!has_comma)
-            comma_pos := strlen(user_inp)
-        else comma_pos := has_comma
-        tlg := substr(user_inp, 1, comma_pos)
-        , des := substr(user_inp, comma_pos + 1)
-        , tlg_arr := str_to_arr(tlg, " ", ",")
-        , des_str := trim(des)
+        return ; quit out
     }
+    else if (has_comma) {
+        tlg := substr(user_inp, 1, has_comma - 1)
+        , des_str := trim(substr(user_inp, has_comma + 1))
+    }
+    else {
+        tlg := substr(user_inp, 1, strlen(user_inp))
+        , des_str := ""
+    }
+    tlg_arr := str_to_arr(trim(tlg), " ", ",")
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         encode_num
@@ -241,19 +242,21 @@ make_keys(array, frmt) {
 ;               last_col:   last default col
 ; Called by:    format_tlg
 ; Returns:      key_array: array object containing keys with values of their
-;                         own original index.
+;                          own original index.
 format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
     ; define vars
     proj_arr := make_keys(safe_arr, "col")
     , head_arr := make_keys(safe_arr, "row")
     , row_num := proj_arr[def_row]["index"]
     , col_num := head_arr[def_col]["index"]
+    , def_true := 1 ; default by default
     , tlg_desc := des_str, tlg_bill := "", tlg_bill_des := ""
     , bill_arr := {"nb": {"index": 22, "description": "non-bill"}
                  , "ed": {"index": 7, "description": "education"}}
     ; initial iterative formatting--bulk of the final output
     for key, value in tlg_arr {
         if % head_arr.haskey(value) {
+            def_true := 0
             col_num := head_arr[value]["index"]
             if (!des_str)
                 tlg_desc .= head_arr[value]["description"] . " "
@@ -265,7 +268,8 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
         }
         else if % bill_arr.haskey(value) {
             tlg_bill := bill_arr[value]["index"]
-            tlg_desc .= " " . bill_arr[value]["description"]
+            if (!des_str)
+                tlg_desc .= bill_arr[value]["description"] . " "
         }
         else return
     }
@@ -273,10 +277,19 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
     def_row_num := proj_arr[def_row]["index"]
     , def_col_num := head_arr[last_col]["index"]
     , prj := safe_arr[row_num, head_arr["ID"]["index"]]
-    if (col_num  <= def_col_num) { ; assign def tlp ID if col within def range
+
+    if (!safe_arr[row_num, col_num]) { ; TLP is blank, assign default
         tlp := safe_arr[def_row_num, col_num]
+        if (!des_str && def_true) {
+            ; if desc is blank and col is default, add description
+            tlg_desc := strreplace(tlg_desc
+                                  , " "
+                                  , " " 
+                                  . head_arr[def_col]["description"] . " "
+                                  ,, 1)
+        }
     }
-    else {
+    else { ; assign actual tlp
         tlp := safe_arr[row_num, col_num]
     }
     return % tlp . "/" . prj . "////" . tlg_bill . "," . tlg_desc
