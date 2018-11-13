@@ -41,6 +41,7 @@ __all__maintable := make_table(path, "Main")
 ; Shift + Alt + J
 +!j::
 send % tlg_wrapper(__all__maintable, "_def", "0", "tr")
+send {Enter}
 return
 
 ; Run and alert
@@ -216,8 +217,7 @@ make_keys(array, frmt) {
     key_array := {}
     if (frmt == "row") {
         loop % array.maxindex(2) {
-            key := array[1, a_index], val := array[2, a_index]
-            , arr_val := {"index": a_index, "description": val}
+            key := array[1, a_index], val := array[3, a_index]
             key_array.insert(key, {"index": a_index, "description": val})
         }
         return key_array
@@ -283,19 +283,26 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
     , def_col_num := head_arr[last_col]["index"]
     , prj := safe_arr[row_num, head_arr["ID"]["index"]]
 
-    if (!safe_arr[row_num, col_num]) { ; if TLP is blank, assign default
-        tlp := safe_arr[def_row_num, col_num]
-        if (!des_str && def_true) {
-            ; if desc is blank and col is default, add description
+    if (safe_arr[row_num, col_num]) {
+        ; if TLP is exists, assign it
+        tlp := safe_arr[row_num, col_num]
+        if (!des_str && def_true) { ; assign def desc if no desc override
             tlg_desc := strreplace(tlg_desc
-                                  , " "
-                                  , " " 
-                                  . head_arr[def_col]["description"] . " "
-                                  ,, 1)
+                                 , " "
+                                 , " " 
+                                 . head_arr[def_col]["description"] . " "
+                                 ,, 1)
         }
     }
-    else { ; assign actual tlp
-        tlp := safe_arr[row_num, col_num]
+    else { ; assign def if tlp val doesn't exist
+        tlp := safe_arr[def_row_num, col_num]
+        if (!des_str && def_true) { ; assign def desc if no desc override
+            tlg_desc := strreplace(tlg_desc
+                                 , " "
+                                 , " " 
+                                 . head_arr[def_col]["description"] . " "
+                                 ,, 1)
+        }
     }
     return % tlp . "/" . prj . "////" . tlg_bill . "," . tlg_desc
 }
