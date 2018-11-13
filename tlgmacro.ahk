@@ -37,13 +37,19 @@ __all__maintable := make_table(path, "Main")
 ; DEFINE HOTKEYS 
 ;//////////////////////////////////////////////////////////////////////////////
 
-; Run Script
+; Run and send
 ; Shift + Alt + J
 +!j::
+send % tlg_wrapper(__all__maintable, "_def", "0", "tr")
+return
+
+; Run and alert
+; Shift + Alt + K
++!k::
 msgbox % tlg_wrapper(__all__maintable, "_def", "0", "tr")
 return
 
-; Reload Script
+; Reload
 ; Shift + Alt + S
 +!s::
 reload
@@ -141,45 +147,45 @@ format_inputs(byref tlg_arr, byref des_str) {
     tlg_arr := str_to_arr(trim(tlg), " ", ",")
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         encode_num
+; Name:         decode_num
 ; Description:  Takes an integer and returns its alphabetic equivalent. Errors
 ;               if parameter is a non-integer or outside of range 1-26.
 ; Parameters:   int: integer to convert to alpha character
-; Called by:    excel_encode
+; Called by:    decode_col
 ; Returns:      single alphabetic character (good input)
 ;               error message (bad input)
-encode_num(int) {
+decode_num(int) {
     alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     if int is not integer
         return "Non-integer input"
     else if (int < 0 || !int || int > 27)
-        return "Integer out of alphabetic bounds"
+        return "Integer out of bounds"
     else return substr(alphabet, int, 1)
 }
 ;//////////////////////////////////////////////////////////////////////////////
-; Name:         excel_encode
+; Name:         decode_col
 ; Description:  I cannot for the life of me figure out how VBA works, so I had
 ;               to write a function that converts the numeric column returned
 ;               from a SpecialCell lookup into familiar alphabetic excel
 ;               notation. This is a recursive function.
-; Parameters:   column_num: Excel numeric column ID
+; Parameters:   col: Excel numeric column ID
 ;               divisor:    modulo divisor (should always be 26 but whatever)
-; Called by:    excel_encode (recursively)
+; Called by:    decode_col (recursively)
 ;               make_table
 ; Returns:      alphabetic translation of col ID (good input)
 ;               error message (bad input)
-excel_encode(column_num) {
+decode_col(col) {
     errormsg := "Parameters must be positive integers"
-    if column_num is not integer
+    if col is not integer
         return % errormsg
-    else if (column_num <= 0)
+    else if (col <= 0)
         return % errormsg
-    else if (column_num <= 26)
-        return % encode_num(column_num)
+    else if (col <= 26)
+        return % decode_num(col)
     else {
-        remainder := mod(column_num, 26)
-        , column_num := floor(column_num/26)
-        return % excel_encode(column_num) . encode_num(remainder)
+        remainder := mod(col, 26)
+        , col := floor(col/26)
+        return % decode_col(col) . decode_num(remainder)
     }
 }
 ;//////////////////////////////////////////////////////////////////////////////
@@ -194,16 +200,14 @@ make_table(file_path, sheet) {
     oWorkbook := comobjget(file_path)
     , lastrow := oWorkbook.Sheets(sheet).Range("A:A").SpecialCells(11).Row
     , lastcol := oWorkbook.Sheets(sheet).Range("1:1").SpecialCells(11).Column
-    ; too lazy to look up how to convert back to alpha in VBA
-    rng := "A1:" . excel_encode(lastcol) . lastrow
+    , rng := "A1:" . decode_col(lastcol) . lastrow
     return oWorkbook.Sheets(sheet).Range(rng).Value
-    ; return oWorkbook.Sheets("Main").Range("A1:O11").Value
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         make_keys
 ; Description:  Create a key array based on the passed format.
-; Parameters:   frmt: header   == 1
-;                     projects == 2
+; Parameters:   frmt: row - across
+;                     col - down
 ;               array: array from which to extract keys for key array
 ; Called by:    format_tlg
 ; Returns:      key_array: array object containing keys with values of their
@@ -225,9 +229,10 @@ make_keys(array, frmt) {
         }
         return key_array
     }
-    else
-        msgbox, "Format must be row or col"
+    else {
+        msgbox, "Format must be 'row' or 'col'"
         return
+    }
 }
 ;//////////////////////////////////////////////////////////////////////////////
 ; Name:         format_tlg
@@ -278,7 +283,7 @@ format_tlg(safe_arr, tlg_arr, des_str, def_row, def_col, last_col) {
     , def_col_num := head_arr[last_col]["index"]
     , prj := safe_arr[row_num, head_arr["ID"]["index"]]
 
-    if (!safe_arr[row_num, col_num]) { ; TLP is blank, assign default
+    if (!safe_arr[row_num, col_num]) { ; if TLP is blank, assign default
         tlp := safe_arr[def_row_num, col_num]
         if (!des_str && def_true) {
             ; if desc is blank and col is default, add description
